@@ -28,10 +28,6 @@ Typical workflow: explore-docs → design-map → delegate for implementation ta
 /explore-docs              # Explore docs in current directory
 /explore-docs path/to/docs # Explore a specific directory
 
-"Documents에 프로젝트를 설명하는 문서들이 들어 있으니 /explore-docs 이 프로젝트의 개요를 파악하고, 그 다음
-  claude.md를 작성하자. 참고로 이 문서를 작성할 때 코드베이스에서 얻을 수 있는 정보를 포함해서는 안 되고, teamcreate를
-  언제 할 지, claude in chrome을 언제 사용할 지, 문서를 언제 열어볼 지, 스킬을 언제 사용할 지 등 필수적인 정보만
-  압축해서 간단하게 만들어야 해."
 ```
 
 **Example Prompt**:
