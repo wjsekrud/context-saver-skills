@@ -31,17 +31,50 @@ The "Decision" column may reference Korean terms from design documents (e.g., en
 
 ---
 
+## Output Architecture
+
+The mapping is split into two layers to keep the actionable view small:
+
+```
+Layer 1: index.md         (~80 lines, fixed size, actionable items only)
+Layer 2: area/*.md         (full detail per area, loaded on demand)
+```
+
+```
+260 items (218 implemented, 30 not implemented, 12 mismatch):
+  Flat file:        ~500 lines always loaded
+  Hierarchical:     ~80 lines (42 actionable) + area detail on demand
+```
+
+Output structure:
+
+```
+.claude/design-map/
+├── index.md              ← Layer 1: stats + NOT implemented + Mismatch only
+├── area/
+│   ├── data-model.md     ← Layer 2: ALL items for this area (incl. Implemented)
+│   ├── editor-ux.md
+│   ├── pipeline.md
+│   └── ...
+```
+
+**Rationale**: Implemented items are confirmed-correct — the main agent rarely needs them. The index surfaces only what needs attention: gaps and mismatches. When the agent needs to verify whether something specific is implemented, it loads the relevant area file.
+
+---
+
 ## Mode 1: Initial Generation (`/design-map` or `/design-map init`)
 
 ### Step 1: Precondition Check
 
-1. **docs-briefing.md**: Check if an explore-docs briefing file exists (typically `.claude/docs-briefing.md` or near project root). If found, use it as input. If not, instruct the user to run `/explore-docs` first.
+1. **docs-briefing**: Check if an explore-docs briefing exists (`.claude/docs-briefing/index.md`). If found, use it as input. If not, instruct the user to run `/explore-docs` first.
 
 2. **Project structure**: Use Glob to identify design document directories and source code directories. Check file paths and directory names only — do NOT read file contents.
 
 ### Step 2: Analysis Agent Dispatch
 
 Group design documents by functional area and assign a general-purpose agent to each group. Agents need to read **both design docs and codebase**, so use general-purpose type (not Explore).
+
+**Each batch becomes one Layer 2 area file**, so assign a descriptive area name (e.g., `data-model`, `editor-ux`, `pipeline`).
 
 Grouping examples (adjust per project):
 - Core data model docs + corresponding models/schemas code
@@ -57,6 +90,8 @@ Agent prompt template:
 ```
 You are a design-implementation mapping analyst. Read the design documents below, find corresponding implementations in the codebase, and produce a mapping table.
 
+This batch covers the "{area_name}" area.
+
 ## Design Documents (read carefully)
 {list of design doc paths}
 
@@ -64,7 +99,7 @@ You are a design-implementation mapping analyst. Read the design documents below
 {source code directory paths}
 
 ## Briefing Reference (if available)
-{explore-docs briefing excerpt for these documents}
+{explore-docs area briefing for these documents}
 
 ## Instructions
 
@@ -101,85 +136,128 @@ Keep decisions to the minimum context needed for an agent to judge implementatio
 Write your complete result to this file: {output_file_path}
 
 The file must contain ONLY the markdown tables organized by document, with document headers (e.g., "## S-C: ..."). Do not include any preamble or summary — just the tables.
+
+At the END, add a summary section:
+
+## Summary
+- Implemented: {count}
+- Not implemented: {count}
+- Mismatch: {count}
 ```
 
-**Output file paths**: `.claude/design-map-parts/group-{N}.md` (e.g., `group-1.md`, `group-2.md`, `group-3.md`). Create the directory if needed.
+**Output file paths**: `.claude/design-map-parts/{area-name}.md`. Create the directory if needed.
 
 ### Step 3: Assembly Agent Dispatch
 
-After all analysis agents complete, spawn **one more general-purpose agent** to assemble the final mapping file. The main agent does NOT read the part files.
+After all analysis agents complete, spawn **one more general-purpose agent** to assemble the hierarchical mapping. The main agent does NOT read the part files.
 
 Assembly agent prompt template:
 
 ```
-You are a mapping assembler. Combine the partial mapping results into a single design-map.md file.
+You are a mapping assembler. Transform partial mapping results into a hierarchical design map.
 
 ## Input Files
-{list of .claude/design-map-parts/group-*.md paths}
+{list of .claude/design-map-parts/*.md paths}
 
 ## Assembly Instructions
 
-1. Read all input files.
+### 1. Create Layer 2 area files
 
-2. Produce a single `.claude/design-map.md` with this structure:
+For each input file, create an area file at:
+  .claude/design-map/area/{area-name}.md
 
-# Design-Implementation Map
+Each area file contains ALL items (including Implemented) for that area:
 
-**Project**: {project name}
-**Generated**: {date}
-**Base commit**: {commit hash}
-**Design docs**: {count} | **Mapped items**: {count}
-**Status summary**: Implemented {N} | Not implemented {N} | Mismatch {N}
+# {Area Name} — Design-Implementation Map
+
+**Items**: {count} | Implemented {N} | Not implemented {N} | Mismatch {N}
 
 ---
 
-## {Functional Area 1} ({document codes})
+## {Document Code}: {Document Title}
 
 | Source | Decision | Status | Notes |
 |--------|----------|--------|-------|
 | ... | ... | ... | ... |
 
-## {Functional Area 2} ({document codes})
-...
+(include every item from the input, organized by document)
+
+### 2. Create Layer 1 index file
+
+Create `.claude/design-map/index.md` with ONLY actionable items:
+
+# Design-Implementation Map — Index
+
+**Project**: {project name}
+**Generated**: {date}
+**Base commit**: {commit hash}
+**Design docs**: {count} | **Mapped items**: {total count}
+**Status summary**: Implemented {N} | Not implemented {N} | Mismatch {N}
+
+---
+
+## Not Implemented
+
+| Source | Decision | Area | Notes |
+|--------|----------|------|-------|
+{ONLY items with Status = "Not implemented", sorted by area}
+
+## Mismatch
+
+| Source | Decision | Area | Notes |
+|--------|----------|------|-------|
+{ONLY items with Status = "Mismatch", sorted by area}
 
 ---
 
 ## Dependency Graph
 
-{Blocked items with their blocker relationships, in text or ascii format}
+{Blocked items with their blocker relationships}
 
-## Implementation Priority Suggestions
+## Implementation Priority
 
 ### Priority 1: Immediate (no blockers, data integrity)
-{table of items}
+| Item | Area | Reason |
+|------|------|--------|
 
-### Priority 2: Independent feature blocks (no blockers, feature extension)
-{table of items}
+### Priority 2: Independent feature blocks
+| Item | Area | Reason |
+|------|------|--------|
 
-### Priority 3: Dependency chains (must follow order)
+### Priority 3: Dependency chains
 {numbered chains}
 
-### Deferred (by design intent or out of scope)
-{table of items with reasons}
+### Deferred (by design intent)
+| Item | Area | Reason |
+|------|------|--------|
 
-3. Count statuses accurately from the actual table rows.
+---
 
-4. Organize sections by functional area, merging related documents.
+## Areas
 
-5. Write the result to: .claude/design-map.md
+| Area | Total | Impl | Not impl | Mismatch | Detail file |
+|------|-------|------|----------|----------|-------------|
+| {name} | {n} | {n} | {n} | {n} | `.claude/design-map/area/{name}.md` |
 
-6. After writing, delete the .claude/design-map-parts/ directory.
+### 3. Key rules
+
+- The index file contains ZERO "Implemented" items. They exist only in area files.
+- The index must stay under ~100 lines regardless of total item count.
+- Count statuses accurately from the actual table rows.
+- "Not implemented" and "Mismatch" items in the index must include the Area column so the reader knows which area file has the full context.
+
+### 4. Write all files, then delete .claude/design-map-parts/
 ```
 
 ### Step 4: Verify and Report
 
 After the assembly agent completes:
 
-1. Verify `.claude/design-map.md` exists (Glob check only — do NOT read the full file).
+1. Verify `.claude/design-map/index.md` exists (Glob check only — do NOT read the full file).
 2. Read only the **header section** (first ~10 lines) to extract the status summary counts.
 3. Report to the user **in Korean**: project name, item counts, status breakdown, and note any high-risk mismatches if the assembly agent flagged them.
 
-**The main agent never reads the full mapping file or any part files.**
+**The main agent never reads the full index, area files, or any part files.**
 
 ---
 
@@ -199,17 +277,17 @@ If no changes detected, report "Mapping is up to date" and exit.
 
 ### Step 2: Scope Identification
 
-Read only the **header and section headers** of the existing `design-map.md` (not the full content) to understand the current structure. Then:
+Read only the **header and the Areas table** of `index.md` (not the full content) to understand current structure. Then:
 
-- **Design doc changes**: Identify which Source codes (e.g., S-D) are affected → those sections need re-verification.
-- **Code changes**: Use Grep on design-map.md for changed filenames in the Notes column → those items need re-verification.
+- **Design doc changes**: Identify which Source codes (e.g., S-D) are affected → load that area file for re-verification.
+- **Code changes**: Use Grep across area files for changed filenames in the Notes column → those items need re-verification.
 
 ### Step 3: Selective Re-verification
 
 Spawn agents only for affected items. If few (~10 or less), use a single agent. If many, split into 2–3 agents.
 
 Each agent receives:
-- The specific section(s) to re-verify (extracted from design-map.md)
+- The affected area file(s) to re-verify
 - The changed files to examine
 - Instructions to output updated rows in the same table format
 - Output file path: `.claude/design-map-parts/update-{N}.md`
@@ -217,16 +295,18 @@ Each agent receives:
 ### Step 4: Merge Update
 
 Spawn an assembly agent to:
-- Read the existing `.claude/design-map.md`
+- Read the existing area files that are affected
 - Read the update part files
-- Replace/insert/remove affected rows
-- Update the header (commit hash, date, status counts)
-- Write the updated file back to `.claude/design-map.md`
+- Replace/insert/remove affected rows in area files
+- Regenerate `index.md` (re-extract Not implemented + Mismatch items, recount stats)
+- Update header (commit hash, date, status counts)
 - Delete the parts directory
+
+**Key**: If a previously "Not implemented" item becomes "Implemented", it disappears from the index and only remains in the area file. The index shrinks.
 
 ### Step 5: Verify and Report
 
-Same as Mode 1 Step 4 — read only the header, report summary in Korean.
+Same as Mode 1 Step 4 — read only the index header, report summary in Korean.
 
 ---
 
@@ -237,6 +317,7 @@ Same as Mode 1 Step 4 — read only the header, report summary in Korean.
 - **Source reference**: For detailed design, point to the original document name and section — don't copy design content into the mapping table.
 - **Minimal rationale**: Only for high-deviation-risk items. Copying all "why" explanations bloats the table.
 - **Mismatch justification**: Every Mismatch item MUST include a one-line reason (intentional simplification, technical constraint, not yet applied, etc.).
+- **Index = actionable only**: The index contains ZERO "Implemented" items. It surfaces only gaps and mismatches. Implemented items live exclusively in area files.
 - **Main agent reads NO documents**: All design doc reading, code exploration, and result assembly is performed by sub-agents.
-- **Main agent reads NO raw results**: Analysis results are passed between agents via temp files. The main agent only reads the final file's header for reporting.
+- **Main agent reads NO raw results**: Analysis results are passed between agents via temp files. The main agent only reads the final index header for reporting.
 - **English internals**: All agent prompts, mapping tables, temp files, and analysis are in English. Only the user-facing summary is in Korean.

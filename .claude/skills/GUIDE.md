@@ -64,13 +64,13 @@ The index stays small regardless of document count. Area files are loaded only w
 
 **Prerequisite**: Run `/explore-docs` first. design-map uses the briefing to reduce exploration costs.
 
-**Output**: `.claude/design-map.md` — a mapping table with:
-- Every design decision mapped to implementation status
-- Three statuses: `Implemented` / `Not implemented` / `Mismatch`
-- Dependency graph (what blocks what)
-- Prioritized implementation suggestions
+**Output**: `.claude/design-map/` — a hierarchical mapping:
+- `index.md` (~80 lines) — **only** Not implemented + Mismatch items, dependency graph, priorities
+- `area/*.md` — full detail per area (including Implemented items, loaded on demand)
 
-**Incremental updates**: After code or doc changes, `/design-map update` detects what changed via `git diff` and only re-verifies affected items.
+The index contains zero Implemented items — they live only in area files. This keeps the actionable view small regardless of project size.
+
+**Incremental updates**: After code or doc changes, `/design-map update` detects what changed via `git diff` and only re-verifies affected items. When items become Implemented, they disappear from the index.
 
 ---
 
