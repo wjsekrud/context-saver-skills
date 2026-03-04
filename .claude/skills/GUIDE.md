@@ -16,7 +16,7 @@ Typical workflow: explore-docs → design-map → delegate for implementation ta
 
 ## 1. /explore-docs
 
-**What it does**: Reads all markdown files in a project using parallel agents and produces a compressed briefing. The main agent never opens any document.
+**What it does**: Reads all markdown files using parallel agents and produces a **hierarchical briefing** — a small index always in context, plus per-area detail files loaded on demand.
 
 **When to use**:
 - New project onboarding — "이 프로젝트 문서들이 뭐가 있어?"
@@ -27,24 +27,22 @@ Typical workflow: explore-docs → design-map → delegate for implementation ta
 ```
 /explore-docs              # Explore docs in current directory
 /explore-docs path/to/docs # Explore a specific directory
-
 ```
 
 **Example Prompt**:
-
 ```
 "@Documents에 프로젝트를 설명하는 문서들이 들어 있으니 이 프로젝트의 개요를 파악하고, 그 다음
   claude.md를 작성하자. 이 문서를 작성할 때 코드베이스에서 얻을 수 있는 정보를 포함해서는 안 되고, teamcreate를
   언제 할 지, 문서를 언제 열어볼 지, 스킬을 언제 사용할 지 등 필수 정보와 도구 사용 지침만 압축해서 간단하게 만들어야 해."
 ```
 
-**Output**: `docs-briefing.md` — a structured briefing with:
-- Per-document summary (scope, key topics, "read this when" conditions)
-- Quick reference table
-- Cross-references between documents
-- Document hierarchy
+**Output**: `.claude/docs-briefing/` — a hierarchical briefing:
+- `index.md` (~50 lines, fixed size) — quick reference table, cross-references, area listing
+- `area/*.md` (~100-200 lines each) — detailed per-document summaries grouped by functional area
 
-**Token savings**: ~97% vs reading all documents directly.
+The index stays small regardless of document count. Area files are loaded only when the main agent needs to dive into a specific domain.
+
+**Token savings**: ~97% vs reading all documents directly. Hierarchical structure prevents briefing bloat for large projects.
 
 ---
 
